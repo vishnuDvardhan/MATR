@@ -2,19 +2,19 @@
 
 # Job Parameters
 dset_type=mr
-dset_name="actnet"
+dset_name="sportsmr"
 clip_length=2
 
 
 gpu_id=0
 num_workers=16
 
-exp_id="actnet-clip-2"
+exp_id="sportsmoment-clip-2"
 model_id=MATR
 
-bsz=50
+bsz=400
 eval_bsz=4
-n_epoch=200
+n_epoch=30
 lr=1e-4
 lr_drop=80
 lr_warmup=10
@@ -88,7 +88,9 @@ else
 fi
 
 # Run Training
-python3 ./main/train.py \
+cd /home/user/Desktop/MATR
+PYTHONPATH=/home/user/Desktop/MATR \
+  /home/user/miniconda3/envs/matr_train/bin/python ./main/train.py \
 --dset_type ${dset_type} \
 --dset_name ${dset_name} \
 --clip_length ${clip_length} \

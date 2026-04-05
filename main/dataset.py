@@ -1,7 +1,4 @@
 import os
-import pdb
-import h5py
-import nncore
 import torch
 from torch.utils.data import Dataset
 import numpy as np
@@ -9,11 +6,7 @@ from tqdm import tqdm
 import random
 import logging
 from os.path import join, exists
-from nncore.dataset import DATASETS
-from nncore.parallel import DataContainer
-from main.config_hl import TVSUM_SPLITS, YOUTUBE_SPLITS
-from utils.basic_utils import load_jsonl, load_pickle, l2_normalize_np_array
-from utils.tensor_utils import pad_sequences_1d
+from utils.basic_utils import load_jsonl, l2_normalize_np_array
 from utils.span_utils import span_xx_to_cxw
 from random import shuffle
 import io
@@ -295,16 +288,12 @@ class DatasetMR(Dataset):
                 q_feat = self.txt_cache[qid]
             except:
                 q_feat = np.zeros((10, self.q_feat_dim)).astype(np.float32)
-            return  torch.from_numpy(q_feat)               
-                q_feat_path = join("data/query_featurs", f"qid{qid}.npz")
-                q_feat = np.load(q_feat_path)[self.q_feat_type].astype(np.float32)
-
+        else:
+            try:
+                q_feat_path = join(self.q_feat_dir, f"{qid}.npz")
+                q_feat = np.load(q_feat_path)["features"].astype(np.float32)
             except:
-                q_feat = np.zeros((10, 512)).astype(np.float32)
-
-                logger.info(f"Something wrong when loading the query feature {q_feat_path}.")
-         else:
-            q_feat = np.zeros((10, 512)).astype(np.float32)
+                q_feat = np.zeros((10, self.q_feat_dim)).astype(np.float32)
 
         if self.q_feat_type == "last_hidden_state":
             # q_feat = q_feat[:self.max_q_l]
@@ -345,3 +334,50 @@ class DatasetMR(Dataset):
         v_feat = np.concatenate(v_feat_list, axis=1)
         return torch.from_numpy(v_feat)  # (Lv, D)
 
+
+def start_end_collate_mr(batch):
+    meta_list = [e["meta"] for e in batch]
+    model_inputs_list = [e["model_inputs"] for e in batch]
+    batched = {}
+    vid_lengths = []
+    for key in model_inputs_list[0]:
+        tensors = [d[key] for d in model_inputs_list]
+        if isinstance(tensors[0], torch.Tensor):
+            lengths = [t.shape[0] for t in tensors]
+            max_len = max(lengths)
+            padded = []
+            for t in tensors:
+                pad_len = max_len - t.shape[0]
+                if pad_len > 0:
+                    t = torch.cat([t, torch.zeros((pad_len,) + t.shape[1:], dtype=t.dtype)], dim=0)
+                padded.append(t)
+            batched[key] = torch.stack(padded, dim=0)
+            if key == "timestamp":
+                vid_lengths = lengths
+        else:
+            try:
+                batched[key] = torch.tensor(tensors)
+            except Exception:
+                batched[key] = tensors
+    if vid_lengths:
+        max_len = batched["timestamp"].shape[1]
+        mask = torch.zeros(len(vid_lengths), max_len, dtype=torch.float)
+        for i, l in enumerate(vid_lengths):
+            mask[i, :l] = 1.0
+        batched["timestamp_mask"] = mask
+    return meta_list, batched
+
+
+def prepare_batch_inputs_mr(batched_model_inputs, device, non_blocking=False):
+    target_keys = {"span_labels", "span_labels_nn", "saliency_scores",
+                   "saliency_pos_labels", "saliency_neg_labels",
+                   "timestamp_window", "timestamp", "timestamp_mask"}
+    model_inputs, targets = {}, {}
+    for key, val in batched_model_inputs.items():
+        if isinstance(val, torch.Tensor):
+            val = val.to(device, non_blocking=non_blocking)
+        if key in target_keys:
+            targets[key] = val
+        else:
+            model_inputs[key] = val
+    return model_inputs, targets

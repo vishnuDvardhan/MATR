@@ -133,7 +133,7 @@ def compute_mr_results(model, eval_loader, opt, epoch_i=None, criterion=None, tb
                 prob = outputs["saliency_scores"].half().unsqueeze(-1) + prob
 
             saliency_scores = []
-            valid_vid_lengths = model_inputs["src_vid_mask"].sum(1).cpu().tolist()
+            valid_vid_lengths = targets["timestamp_mask"].sum(1).cpu().tolist()
             for j in range(len(valid_vid_lengths)):
                 saliency_scores.append(_saliency_scores[j, :int(valid_vid_lengths[j])].tolist())
         else:

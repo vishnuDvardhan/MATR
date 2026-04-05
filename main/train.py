@@ -60,12 +60,12 @@ def train_epoch(model, criterion, train_loader, optimizer, opt, epoch_i, tb_writ
         query_mem = outputs['txt_decoder']
         samples = []
 
-        for i in range(vid_mem.shape[0]): 
-            step_ids = torch.arange(vid_mem.shape[1])  
+        for i in range(vid_mem.shape[0]):
+            step_ids = torch.arange(query_mem.shape[1])
             sample = {
-                'step_features': vid_mem[i],       
-                'frame_features': query_mem[i],     
-                'step_ids': step_ids               
+                'step_features': query_mem[i],     # query as steps (short)
+                'frame_features': vid_mem[i],      # video as frames (long)
+                'step_ids': step_ids
             }
             samples.append(sample)
 
@@ -88,12 +88,12 @@ def train_epoch(model, criterion, train_loader, optimizer, opt, epoch_i, tb_writ
         query_mem = outputs['txt_mem_proj_n']
         samples = []
 
-        for i in range(vid_mem.shape[0]):  
-            step_ids = torch.arange(vid_mem.shape[1])  
+        for i in range(vid_mem.shape[0]):
+            step_ids = torch.arange(query_mem.shape[1])
             sample = {
-                'step_features': vid_mem[i],       
-                'frame_features': query_mem[i],      
-                'step_ids': step_ids               
+                'step_features': query_mem[i],     # query as steps (short)
+                'frame_features': vid_mem[i],      # video as frames (long)
+                'step_ids': step_ids
             }
             samples.append(sample)
 

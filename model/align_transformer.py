@@ -69,37 +69,8 @@ class Transformer(nn.Module):
         query_mem = memory.transpose(0, 1)[:, src_vid.shape[1]:, :].transpose(1,0)  # (bsz, L_txt, d)
   
 
-        samples = []
-
-        for i in range(vid_mem.shape[0]):  
-            
-            step_ids = torch.arange(query_mem.shape[1])  
-            sample = {
-                'step_features': query_mem[i],       # Video sequence of shape [15, 256]
-                'frame_features': vid_mem[i],      # Text sequence of shape [10, 256]
-                'step_ids': step_ids               # Dummy step IDs corresponding to video frames
-            }
-            samples.append(sample)
-
-        _, A_post = compute_alignment_loss(
-        samples=samples, 
-        distractors=None,        # No distractors in this case
-        l2_normalize=True,       # Normalize features if needed
-        # drop_cost_type='max',    # Choose how to compute cost between sequences
-        dp_algo='DTW',       # Use DropDTW for flexible alignment
-        keep_percentile=1,       # Keep all frames for matching
-        contiguous=True,         # Ensure contiguous segments for alignment
-        gamma_xz=10,             # Scaling factor for matching
-        gamma_min=1,             # Scaling factor for dynamic programming alignment
-        aggregate_loss=True,      # Aggregate the loss over sequences
-        drop_cost_type='logit'
-        )
-
-
-        indices = (A_post == 1).any(dim=2) 
-        indices = indices.permute(2, 1, 0)  # Shape: (batch_size, m, n)
-        selected_positions = indices.any(dim=2)  # Shape: (batch_size, m)
-        aligned_tensor = vid_mem[selected_positions]
+        aligned_tensor = vid_mem  # (L_vid, bsz, d)
+        l = vid_mem.shape[0]
 
         hs = self.decoder(tgt, aligned_tensor, memory_key_padding_mask=mask[:,:l],
                           pos=pos_embed[:l,:,:], query_pos=query_embed)  # (#layers, #queries, batch_size, d)

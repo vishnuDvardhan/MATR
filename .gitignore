@@ -1,0 +1,28 @@
+# Virtual environments
+matr_env/
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Test artifacts
+test_output/
+test_videos/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# data
+data/

@@ -107,12 +107,19 @@ class Model(nn.Module):
         # MLP Projector
         self.weightedpool = WeightedPool(hidden_dim)
 
-    def forward(self, src_txt, src_txt_mask, src_vid, src_vid_mask, src_cls=None, src_cls_mask=None):
+    def forward(self, src_txt=None, src_txt_mask=None, src_vid=None, src_vid_mask=None,
+                src_cls=None, src_cls_mask=None, query_feat=None, video_feat=None, timestamp=None):
+        if src_vid is None and video_feat is not None:
+            src_vid = video_feat
+        if src_txt is None and query_feat is not None:
+            src_txt = query_feat
+        if src_vid_mask is None:
+            src_vid_mask = torch.ones(src_vid.shape[:2], dtype=src_vid.dtype, device=src_vid.device)
+        if src_txt_mask is None:
+            src_txt_mask = torch.ones(src_txt.shape[:2], dtype=src_txt.dtype, device=src_txt.device)
         bs = src_vid.shape[0]
         src_vid = self.input_vid_proj(src_vid)
         src_txt = self.input_txt_proj(src_txt)
-        print(f"src_vid: {src_vid.shape}")
-        print(f"src_txt: {src_txt.shape}")
         if src_cls is not None:
             src_cls = self.input_txt_proj(src_cls)
         device_id = src_vid.device
@@ -146,7 +153,7 @@ class Model(nn.Module):
 
         for i in range(vid_mem.shape[0]):  # Iterate over the batch dimension (size 8)
             # Create dummy step_ids corresponding to the number of frames in the video sequence
-            step_ids = torch.arange(txt.shape[1])  # step_ids will be [0, 1, ..., 14] for each video
+            step_ids = torch.arange(src_txt.shape[1])  # step_ids will be [0, 1, ..., 14] for each video
             sample = {
                 'step_features': txt_mem[i],       # Video sequence of shape [15, 256]
                 'frame_features': vid_mem[i],      # Text sequence of shape [10, 256]
