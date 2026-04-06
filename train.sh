@@ -9,7 +9,7 @@ clip_length=2
 gpu_id=0
 num_workers=16
 
-exp_id="sportsmoment-clip-2"
+exp_id="sportsmoment-imagebind-1"
 model_id=MATR
 
 bsz=400
@@ -44,8 +44,8 @@ nms_thd=0.7
 max_before_nms=1000
 
 ctx_mode=video_tef
-v_feat_types=clip
-t_feat_type=clip
+v_feat_types=imagebind
+t_feat_type=imagebind
 use_cache=-1
 easy_negative_only=-1
 
@@ -77,11 +77,18 @@ if [[ ${v_feat_types} == *"clip"* ]]; then
   v_feat_dirs+=(${feat_root}/vid_clip)
   (( v_feat_dim += 512 ))
 fi
+if [[ ${v_feat_types} == *"imagebind"* ]]; then
+  v_feat_dirs+=(${feat_root}/vid_imagebind)
+  (( v_feat_dim += 1024 ))
+fi
 
 # Text Features
 if [[ ${t_feat_type} == "clip" ]]; then
   t_feat_dir=${feat_root}/vid_clip_query
   t_feat_dim=512
+elif [[ ${t_feat_type} == "imagebind" ]]; then
+  t_feat_dir=${feat_root}/vid_imagebind_query
+  t_feat_dim=1024
 else
   echo "Wrong arg for t_feat_type."
   exit 1
@@ -90,7 +97,7 @@ fi
 # Run Training
 cd /home/user/Desktop/MATR
 PYTHONPATH=/home/user/Desktop/MATR \
-  /home/user/miniconda3/envs/matr_train/bin/python ./main/train.py \
+  /home/user/miniconda3/envs/matr_imagebind/bin/python ./main/train.py \
 --dset_type ${dset_type} \
 --dset_name ${dset_name} \
 --clip_length ${clip_length} \

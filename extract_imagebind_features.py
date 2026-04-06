@@ -107,7 +107,8 @@ def extract_audio_segments(video_path, n_clips, clip_length=CLIP_LENGTH, sr=AUDI
     return segments  # list of (1, 128, 204)
 
 
-def extract_features_for_video(video_path, model, transform, device, clip_length=CLIP_LENGTH):
+def extract_features_for_video(video_path, model, transform, device, clip_length=CLIP_LENGTH,
+                               batch_size=64, show_progress=False):
     from imagebind.models.imagebind_model import ModalityType
 
     cap = cv2.VideoCapture(video_path)
@@ -123,10 +124,12 @@ def extract_features_for_video(video_path, model, transform, device, clip_length
         return None
 
     n_clips = max(1, int(duration / clip_length))
+    fname = os.path.basename(video_path)
 
-    # Extract frames
+    # Extract frames with progress
     frames = []
-    for clip_idx in range(n_clips):
+    frame_iter = tqdm(range(n_clips), desc=f"  frames [{fname}]", leave=False) if show_progress else range(n_clips)
+    for clip_idx in frame_iter:
         center_time = (clip_idx + 0.5) * clip_length
         frame_idx = min(int(center_time * fps), total_frames - 1)
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
@@ -137,29 +140,41 @@ def extract_features_for_video(video_path, model, transform, device, clip_length
         frames.append(transform(Image.fromarray(frame_rgb)))
     cap.release()
 
-    vision_batch = torch.stack(frames).to(device)  # (n_clips, 3, 224, 224)
-
     # Extract audio segments
+    if show_progress:
+        tqdm.write(f"  [{fname}] Extracting audio...")
     audio_segments = extract_audio_segments(video_path, n_clips, clip_length)
 
-    with torch.no_grad():
-        # Vision embeddings
-        vis_inputs = {ModalityType.VISION: vision_batch}
-        vis_emb = model(vis_inputs)[ModalityType.VISION]  # (n_clips, 1024)
-        vis_emb = vis_emb / vis_emb.norm(dim=-1, keepdim=True)
+    # Vision embeddings in batches with progress
+    vis_feats = []
+    n_batches = (n_clips + batch_size - 1) // batch_size
+    batch_iter = tqdm(range(0, n_clips, batch_size), total=n_batches,
+                      desc=f"  vision [{fname}]", leave=False) if show_progress else range(0, n_clips, batch_size)
+    for i in batch_iter:
+        batch = torch.stack(frames[i:i+batch_size]).to(device)
+        with torch.no_grad():
+            emb = model({ModalityType.VISION: batch})[ModalityType.VISION]
+            emb = emb / emb.norm(dim=-1, keepdim=True)
+        vis_feats.append(emb.cpu().float())
+    vis_emb = torch.cat(vis_feats, dim=0)
 
-        if audio_segments is not None:
-            # Stack audio: (n_clips, 1, samples)
-            audio_batch = torch.stack(audio_segments).to(device)  # (n_clips, 1, samples)
-            aud_inputs = {ModalityType.AUDIO: audio_batch}
-            aud_emb = model(aud_inputs)[ModalityType.AUDIO]  # (n_clips, 1024)
-            aud_emb = aud_emb / aud_emb.norm(dim=-1, keepdim=True)
-
-            # Fuse: average vision + audio (both in same ImageBind space)
-            fused = (vis_emb + aud_emb) / 2.0
-            fused = fused / fused.norm(dim=-1, keepdim=True)
-        else:
-            fused = vis_emb  # vision-only fallback
+    if audio_segments is not None:
+        aud_feats = []
+        aud_iter = tqdm(range(0, n_clips, batch_size), total=n_batches,
+                        desc=f"  audio  [{fname}]", leave=False) if show_progress else range(0, n_clips, batch_size)
+        for i in aud_iter:
+            batch = torch.stack(audio_segments[i:i+batch_size]).to(device)
+            with torch.no_grad():
+                emb = model({ModalityType.AUDIO: batch})[ModalityType.AUDIO]
+                emb = emb / emb.norm(dim=-1, keepdim=True)
+            aud_feats.append(emb.cpu().float())
+        aud_emb = torch.cat(aud_feats, dim=0)
+        fused = (vis_emb + aud_emb) / 2.0
+        fused = fused / fused.norm(dim=-1, keepdim=True)
+    else:
+        if show_progress:
+            tqdm.write(f"  [{fname}] No audio track, using vision only.")
+        fused = vis_emb
 
     return fused.cpu().float().numpy()  # (n_clips, 1024)
 
@@ -186,20 +201,23 @@ def main():
                           if f.endswith(('.mp4', '.avi', '.mkv', '.mov'))])
     print(f"Found {len(video_files)} videos in {args.video_dir}")
 
+    single_video = len(video_files) == 1
     skipped = 0
-    for fname in tqdm(video_files):
+    for fname in tqdm(video_files, desc="Videos"):
         vid_id = os.path.splitext(fname)[0]
         out_path = os.path.join(args.out_dir, f"{vid_id}.npz")
         if os.path.exists(out_path) and not args.restart:
             continue
 
         video_path = os.path.join(args.video_dir, fname)
-        features = extract_features_for_video(video_path, model, transform, args.device)
+        features = extract_features_for_video(video_path, model, transform, args.device,
+                                              show_progress=single_video)
         if features is None:
             skipped += 1
             continue
 
         np.savez_compressed(out_path, features=features)
+        tqdm.write(f"Saved: {out_path}  shape={features.shape}")
 
     print(f"Done. Skipped {skipped} videos.")
 
