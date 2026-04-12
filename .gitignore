@@ -26,3 +26,18 @@ Thumbs.db
 
 # data
 data/
+
+# Large media files and extracted features
+*.mp4
+*.npz
+*.wav
+tdl-videos/
+.checkpoints/
+
+# Highlight output directories
+highlights_t20/
+highlights_tdl/
+highlights_tdl_v2/
+
+# Logs
+*.log

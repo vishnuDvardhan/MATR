@@ -24,9 +24,8 @@ from torchvision import transforms
 
 CLIP_LENGTH = 2       # seconds per segment
 AUDIO_SAMPLE_RATE = 16000  # ImageBind expects 16kHz
-FFMPEG = '/home/user/miniconda3/envs/ml_fresh_start/bin/ffmpeg'
-FFPROBE = '/home/user/miniconda3/envs/ml_fresh_start/bin/ffprobe'
-PYTHON = '/home/user/miniconda3/pkgs/python-3.10.18-h1a3bd86_0/bin/python3.10'
+FFMPEG = '/home/azhan1303/anaconda3/envs/tdl-project/bin/ffmpeg'
+FFPROBE = '/home/azhan1303/anaconda3/envs/tdl-project/bin/ffprobe'
 
 
 def get_vision_transform():
