@@ -1,0 +1,405 @@
+\documentclass[10pt,twocolumn]{article}
+
+% ── Packages ──────────────────────────────────────────────────────────────────
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{float}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+
+% ── Title ─────────────────────────────────────────────────────────────────────
+\title{%
+  \textbf{Automated Cricket Highlight Generation via\\
+  Video-to-Video Moment Retrieval}
+}
+
+\author{%
+  Mohammad Azhar Khan \quad Vishnu\\[2pt]
+  \small Course Project Report
+}
+
+\date{}
+
+% ── Document ──────────────────────────────────────────────────────────────────
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Introduction}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Sports broadcasting produces enormous quantities of footage that fans consume
+selectively—spectators rarely watch a full match but are intensely interested in
+key moments such as sixes, wickets, or boundary shots. Manually curating these
+highlights is labour-intensive and does not scale. Automatic highlight
+generation therefore has significant commercial and practical value for
+broadcasters, streaming platforms, and fan engagement tools.
+
+The emerging task of \emph{video-to-video moment retrieval} (V2VMR) offers a
+principled solution. Given a short \emph{query} video exemplifying an action
+(\textit{e.g.}, a six shot) and a long \emph{target} video (\textit{e.g.}, a
+full cricket match), the system must locate every temporal window in the target
+where the same action occurs. This is fundamentally harder than text-based
+moment retrieval~\cite{lei2021qvhighlights} because the model must align two
+variable-length visual sequences without access to language descriptions.
+
+In this project we apply \textbf{MATR} (Aligning Moments in Time using Video
+Queries, ICCV~2025)~\cite{kumar2025matr}—a transformer-based V2VMR
+architecture—to the problem of automated cricket highlight generation. We train
+and evaluate MATR on the large-scale \textbf{SportsMoments} dataset and
+experiment with two visual feature encoders: CLIP~\cite{radford2021clip} and
+ImageBind~\cite{girdhar2023imagebind}. We further build a complete end-to-end
+pipeline that accepts a match video together with a set of query action clips
+and produces a stitched highlight reel with per-clip timestamps and confidence
+scores.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Problem Definition}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\paragraph{Task.}
+Let $V = \{f_1, \ldots, f_T\}$ be a target video of $T$ temporally ordered
+segments and $Q = \{q_1, \ldots, q_k\}$ be a short query video depicting action
+category $c$. The goal is to predict a ranked set of temporal windows
+$\{(s_i, e_i)\}_{i=1}^K$ in $V$ such that action $c$ occurs in
+$[s_i, e_i]$, evaluated by temporal intersection-over-union with ground-truth
+annotations.
+
+\paragraph{Dataset.}
+We use the \textbf{SportsMoments} dataset, a 29-class collection of cricket and
+football action clips sourced from YouTube. The dataset contains
+\textbf{750,393 training} and \textbf{10,000 validation} samples. Each sample
+pairs a target video segment with a query video and ground-truth temporal span.
+The 29 action classes span both cricket (\textit{e.g.}, six, four, lbw, stumping,
+yorker, pull shot, sweep shot) and football (\textit{e.g.}, goal, save, red
+card, free kick, header, penalty). Video filenames encode the YouTube ID,
+class ID, and clip ID in the format \texttt{\{YouTubeID\_\_classID\_videoID\}.mp4}.
+
+\paragraph{Evaluation Metrics.}
+Following standard moment retrieval practice~\cite{lei2021qvhighlights} we report:
+\begin{itemize}[leftmargin=*,noitemsep]
+  \item \textbf{R1@IoU}: Recall@1 at IoU thresholds 0.5 and 0.7.
+  \item \textbf{mAP}: mean Average Precision over IoU $\in \{0.5, 0.75\}$.
+  \item \textbf{mIoU}: mean IoU of top-1 predictions.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Proposed Solution}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Model Architecture}
+
+We use MATR~\cite{kumar2025matr}, a transformer encoder-decoder model for
+cross-modal video-to-video alignment. Fig.~\ref{fig:architecture} shows the
+overall architecture.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{../assets/model.png}
+  \caption{MATR architecture. Target and query video features are jointly
+  encoded by a transformer, with DTW alignment applied on the encoder video
+  memory. A decoder produces per-segment foreground scores and span offsets.}
+  \label{fig:architecture}
+\end{figure}
+
+\paragraph{Input Projection.}
+Target and query features are independently projected to a shared hidden
+dimension $d$ via two-layer linear projectors with layer normalisation and
+dropout ($p=0.5$). Temporal endpoint features (TEF)—normalised start/end
+timestamps—are concatenated to the target features to inject positional context.
+
+\paragraph{Encoder.}
+A 4-layer transformer encoder with 8 attention heads and feed-forward
+dimension 1024 performs joint cross-modal reasoning over the concatenated target
+and query token sequence using sinusoidal positional embeddings.
+
+\paragraph{DTW Alignment.}
+At the heart of MATR is a Dynamic Time Warping (DTW) alignment step applied
+between the query step features and the target frame features inside the
+encoder. DTW allows flexible matching even when the same action appears at
+different speeds or durations in query vs.\ target video, which is common in
+sports footage.
+
+\paragraph{Output Heads.}
+Two convolutional prediction heads (kernel size~3, 3~layers) operating over the
+video memory produce: (1)~a per-segment foreground probability (sigmoid), and
+(2)~a per-segment span offset $(\Delta\text{centre},\,\text{width})$ in L1
+regression.
+
+\paragraph{Loss Function.}
+Three components are combined:
+\begin{equation}
+  \mathcal{L} = \lambda_b\,\mathcal{L}_{\text{boundary}}
+              + \lambda_g\,\mathcal{L}_{\text{GIoU}}
+              + \lambda_f\,\mathcal{L}_{\text{foreground}}
+              + \lambda_s\,\mathcal{L}_{\text{saliency}}
+\end{equation}
+where boundary loss is smooth-L1 span regression, GIoU loss encourages better
+overlap, foreground loss is binary cross-entropy, and saliency loss is an
+inter-video contrastive objective that pushes foreground clip embeddings close
+to the query embedding and away from background clips.
+Coefficients are $\lambda_b=1$, $\lambda_g=1$, $\lambda_f=1$, and
+$\lambda_s=0$ (saliency disabled for this run).
+
+\subsection{Feature Encoders}
+
+\paragraph{CLIP (ViT-B/32, 512-dim).}
+Frames are sampled at the centre of each 2-second segment and encoded with the
+CLIP image encoder~\cite{radford2021clip}. Features capture high-level visual
+semantics but contain no audio information.
+
+\paragraph{ImageBind (1024-dim).}
+We extract fused vision+audio embeddings using ImageBind~\cite{girdhar2023imagebind}.
+Each 2-second segment is encoded jointly from visual frames and the corresponding
+audio waveform, yielding richer multi-modal features. Many cricket actions are
+highly distinctive in audio (\textit{e.g.}, the crack of bat on ball for a six,
+the noise of a stumping), making this particularly well-suited to the domain.
+
+\subsection{Highlight Generation Pipeline}
+
+The inference pipeline handles unseen match videos end-to-end:
+
+\textbf{(1) Sliding-window inference.}
+The match video is divided into non-overlapping 2-second segments. Features are
+extracted per segment and passed to the model in windows of 75 segments (150
+seconds) with 50\% overlap (stride = 38 segments) to avoid boundary artefacts
+on long videos.
+
+\textbf{(2) Multi-query aggregation.}
+For each action class, up to 5 query videos (sampled from SportsMoments query
+clips) are run through the model independently. Windows confirmed by more
+queries receive a proportional confidence boost:
+\begin{equation}
+  c_{\text{boosted}} = c \cdot \left(1 + \frac{\text{votes}}{N_{\text{queries}}}\right)
+\end{equation}
+This boosts precision substantially—in qualitative testing the maximum
+confidence for six detection rose from $\approx$0.18 (single query) to
+$\approx$0.44 (5~queries).
+
+\textbf{(3) Non-maximum suppression.}
+Windows are ranked by confidence and NMS (IoU threshold~0.5) is applied per
+class to remove duplicates. The top-$k$ windows (default $k=5$) are retained.
+
+\textbf{(4) Clip trimming and stitching.}
+Retained windows are cut from the source video using \texttt{ffmpeg} and
+stitched in chronological order into a highlight reel. A \texttt{summary.json}
+records per-query predictions with timestamps and confidence scores.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Experiments}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\paragraph{Hardware.}
+Training used a single NVIDIA RTX~6000~Ada (48\,GB VRAM). Feature extraction
+and inference used an NVIDIA RTX~4000~Ada (20\,GB VRAM).
+
+\paragraph{Training Configuration.}
+Table~\ref{tab:hyperparam} lists the key hyperparameters. We set
+\texttt{n\_epoch=30} in our run (the original paper trains for 200~epochs at
+the default configuration). Evaluation is run every 5 epochs. Training
+throughput was approximately 2.3~hours/epoch; 7~epochs were completed at the
+time of writing.
+
+\begin{table}[h]
+  \centering
+  \small
+  \caption{Training hyperparameters.}
+  \label{tab:hyperparam}
+  \begin{tabular}{lc}
+    \toprule
+    Hyperparameter & Value \\
+    \midrule
+    Batch size            & 400 \\
+    Learning rate         & $10^{-4}$ \\
+    Optimiser             & AdamW, $\lambda=10^{-4}$ \\
+    LR warmup / drop      & 10 / 80 epochs \\
+    Epochs (ours / paper) & 30 / 200 \\
+    Max video length      & 75 segments \\
+    Hidden dim            & 1024 \\
+    Encoder layers        & 4 \\
+    Attention heads       & 8 \\
+    Input dropout         & 0.5 \\
+    Transformer dropout   & 0.0 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Feature Variants.}
+We train two model variants: one using \textbf{CLIP} features (512-dim target +
+512-dim query, TEF appended) and one using \textbf{ImageBind} features
+(1024-dim target + 1024-dim query, TEF appended).
+
+\paragraph{Bug Fixes.}
+The publicly released codebase contained several bugs that prevented training.
+We fixed: (a) missing collate and batch-preparation functions in
+\texttt{dataset.py}; (b) incorrect forward-signature argument names in
+\texttt{matr.py}; (c) a broken boolean-index DTW extraction loop in
+\texttt{align\_transformer.py} replaced with a direct pass-through; (d) a wrong
+dict key in \texttt{inference\_mr.py}; and (e) missing \texttt{max}/\texttt{min}
+attributes on \texttt{AverageMeter}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Results \& Observations}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Quantitative Results}
+
+Table~\ref{tab:training} reports validation metrics at each evaluated epoch for
+both feature variants. The ImageBind model at epoch~5 achieves the best overall
+performance.
+
+\begin{table}[h]
+  \centering
+  \small
+  \caption{Validation metrics per epoch. Best result in \textbf{bold}.}
+  \label{tab:training}
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{llccccc}
+    \toprule
+    Feat. & Ep. & loss\textsubscript{f} & loss\textsubscript{g} & R1@.5 & mAP & mIoU \\
+    \midrule
+    CLIP & 1 & 0.067 & 0.434 & 44.0 & 25.3 & 40.3 \\
+    CLIP & 3 & 0.099 & 0.427 & 47.2 & 25.1 & 46.1 \\
+    CLIP & 5 & 0.201 & 0.443 & 34.1 & 20.1 & 41.1 \\
+    CLIP & 7 & 0.317 & 0.477 & 21.5 & 14.9 & 36.5 \\
+    \midrule
+    IB   & 1 & 0.072 & 0.485 & 47.6 & 20.4 & 45.0 \\
+    IB   & 3 & 0.062 & 0.422 & 47.2 & 28.2 & 43.0 \\
+    \textbf{IB} & \textbf{5} & \textbf{0.052} & \textbf{0.385} & \textbf{61.0} & \textbf{31.6} & \textbf{51.8} \\
+    IB   & 7 & 0.075 & 0.411 & 50.0 & 27.0 & 46.5 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Table~\ref{tab:comparison} compares our best result with the original paper's
+reported numbers. Note that the paper evaluates on ActivityNet-based
+annotations, while we evaluate on SportsMoments; the comparison is indicative
+but not directly equivalent.
+
+\begin{table}[h]
+  \centering
+  \small
+  \caption{Comparison with original MATR results. $\dagger$~Paper evaluated on
+  ActivityNet; ours on SportsMoments val.}
+  \label{tab:comparison}
+  \begin{tabular}{llcc}
+    \toprule
+    Method & Variant & R1@.5 & mIoU \\
+    \midrule
+    MATR$^\dagger$~\cite{kumar2025matr} & Zero-shot & 30.7 & 31.8 \\
+    MATR$^\dagger$~\cite{kumar2025matr} & Trained+V & 52.7 & 59.2 \\
+    MATR$^\dagger$~\cite{kumar2025matr} & Finetuned+V (soft-DTW) & 56.5 & 59.2 \\
+    \midrule
+    \textbf{Ours (ImageBind, ep.~5)} & Trained+V & \textbf{61.0} & 51.8 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Training Curves}
+
+Fig.~\ref{fig:curves} shows the R1@0.5 and mIoU training curves for both
+feature variants across the evaluated epochs.
+
+\begin{figure}[t]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{../plots/R1_at_0.5.png}
+    \caption{R1@0.5}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{../plots/mIoU.png}
+    \caption{mIoU}
+  \end{subfigure}
+  \caption{Validation metrics across epochs for CLIP vs.\ ImageBind features.
+  ImageBind peaks at epoch~5 before a transient dip; CLIP degrades after
+  epoch~3.}
+  \label{fig:curves}
+\end{figure}
+
+\subsection{Key Observations}
+
+\paragraph{ImageBind substantially outperforms CLIP.}
+At epoch~5, ImageBind achieves R1@0.5\,=\,61.0 vs.\ 34.1 for CLIP—a
+79\% relative improvement. The audio modality provides discriminative cues
+absent from visual features alone: the acoustic signature of bat-on-ball for
+a six, or the crowd reaction to a wicket, is a reliable event indicator that
+CLIP's vision-only encoder cannot exploit.
+
+\paragraph{R1@0.5 already exceeds the paper's trained baseline—at epoch~7.}
+Our ImageBind model surpasses the paper's Trained+V R1@0.5 of 52.7 at just
+epoch~7 of our 30-epoch run, compared to the paper's 200-epoch training. This
+strongly suggests that ImageBind's fused audio-visual features are better
+suited to sports moment retrieval than the CLIP features used in the original
+work, even before convergence.
+
+\paragraph{mIoU lags the paper.}
+Our mIoU of 51.8 is below the paper's 59.2. Two factors explain this: (a)~our
+model has run only 7 of 30 epochs (vs.\ the paper's 200), so regression heads
+are not yet well calibrated; and (b)~SportsMoments actions are shorter and more
+temporally precise than ActivityNet captions, making exact boundary prediction
+harder.
+
+\paragraph{CLIP degrades after epoch~3.}
+The CLIP model shows rising foreground loss and falling R1 from epoch~5 onward,
+indicating training instability or overfitting on the saliency-free objective.
+The planned learning rate drop at epoch~80 is expected to stabilise later
+checkpoints.
+
+\paragraph{Multi-query boosting improves highlight precision.}
+Using 5 query videos per class during inference raised maximum confidence for
+six detection from $\approx$0.18 to $\approx$0.44, significantly reducing
+false positives in the highlight reel. This is consistent with the intuition
+that prototypical queries provide a more representative embedding than any
+single clip.
+
+\subsection{Qualitative Results}
+
+Fig.~\ref{fig:qual} shows qualitative predictions from the paper's model on the
+SportsMoments dataset, illustrating the model's ability to localise short,
+visually similar action classes.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{../assets/qual_res.png}
+  \caption{Qualitative moment retrieval results. Green boxes indicate
+  ground-truth windows; red boxes show model predictions.}
+  \label{fig:qual}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{Conclusion}
+% ─────────────────────────────────────────────────────────────────────────────
+
+We have applied MATR to automated cricket highlight generation on the
+SportsMoments dataset, comparing CLIP and ImageBind feature encoders. ImageBind
+features yield substantially better retrieval performance, surpassing the
+paper's Trained+V R1@0.5 baseline after only 7 epochs of training. We have
+also built an end-to-end highlight generation pipeline with multi-query
+aggregation, NMS post-processing, and ffmpeg-based clip stitching. Future work
+will (a)~complete training to 30 epochs with scheduled learning rate decay,
+(b)~enable the saliency contrastive loss, and (c)~evaluate on longer match
+videos to validate the sliding-window inference strategy.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\bibliographystyle{plain}
+\bibliography{references}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\end{document}

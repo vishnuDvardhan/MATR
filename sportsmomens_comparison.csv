@@ -1,0 +1,5 @@
+method,variant,R1@0.5,mIoU
+MATR (paper),Zero-shot,30.7,31.8
+MATR (paper),Trained+V,52.7,59.2
+MATR (paper),Finetuned+V (soft-DTW),56.5,59.2
+MATR (ours),Trained+V (epoch 5),60.95,51.76
