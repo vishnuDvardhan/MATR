@@ -5,11 +5,10 @@ dset_type=mr
 dset_name="sportsmr"
 clip_length=2
 
-
 gpu_id=0
-num_workers=16
+num_workers=8
 
-exp_id="sportsmoment-imagebind-8"
+exp_id="sportsmoment-clip-5"
 model_id=MATR
 
 bsz=400
@@ -38,19 +37,15 @@ align_l=1
 s_loss_intra_coef=0
 s_loss_inter_coef=0
 
-
 main_metric=MR-full-mAP-key
 nms_thd=0.7
 max_before_nms=1000
 
 ctx_mode=video_tef
-v_feat_types=imagebind
-t_feat_type=imagebind
+v_feat_types=clip
+t_feat_type=clip
 use_cache=-1
 easy_negative_only=-1
-
-resume="results/mr-sportsmr/sportsmoment-imagebind-4-imagebind-imagebind-2026_04_06_17/model_best.ckpt"
-# model_best.ckpt = epoch 5, mAP 31.61, mIoU 51.76
 
 
 # Data Paths
@@ -62,18 +57,6 @@ feat_root=data/${dset_name}
 # Video Features
 v_feat_dim=0
 v_feat_dirs=()
-if [[ ${v_feat_types} == *"slowfast"* ]]; then
-  v_feat_dirs+=(${feat_root}/vid_slowfast)
-  (( v_feat_dim += 2304 ))
-fi
-if [[ ${v_feat_types} == *"i3d"* ]]; then
-  v_feat_dirs+=(${feat_root}/vid_i3d)
-  (( v_feat_dim += 1024 ))
-fi
-if [[ ${v_feat_types} == *"c3d"* ]]; then
-  v_feat_dirs+=(${feat_root}/vid_c3d)
-  (( v_feat_dim += 500 ))
-fi
 if [[ ${v_feat_types} == *"clip"* ]]; then
   v_feat_dirs+=(${feat_root}/vid_clip)
   (( v_feat_dim += 512 ))
@@ -97,7 +80,7 @@ fi
 
 # Run Training
 cd /home/user/Desktop/MATR
-CUDA_VISIBLE_DEVICES=0 PYTHONPATH=/home/user/Desktop/MATR \
+CUDA_VISIBLE_DEVICES=1 PYTHONPATH=/home/user/Desktop/MATR \
   /home/user/miniconda3/envs/matr_imagebind/bin/python ./main/train.py \
 --dset_type ${dset_type} \
 --dset_name ${dset_name} \
@@ -143,5 +126,5 @@ CUDA_VISIBLE_DEVICES=0 PYTHONPATH=/home/user/Desktop/MATR \
 --round_multiple ${round_multiple} \
 --hidden_dim ${hidden_dim} \
 --grad_clip 0.1 \
---resume ${resume} \
---resume_all
+--eval_init ${@:1} \
+--resume results/mr-sportsmr/sportsmoment-clip-4-clip-clip-2026_04_06_08/model_best.ckpt

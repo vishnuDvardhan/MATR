@@ -144,45 +144,13 @@ class Model(nn.Module):
 
         vid_mem = memory[:, :src_vid.shape[1], :]  # (bsz, L_vid, d)
         txt_mem = memory[:, src_vid.shape[1]:, :]  # (bsz, L_txt, d)
-        # Extract the last layer from hs and reshape it
-        hs_last_layer = hs[-1].squeeze(1)  # Shape: (8, 256)
-         # Repeat hs_last_layer to match the sequence length of vid_memory_proj
-        hs_last_layer_repeated = hs_last_layer.unsqueeze(1).repeat(1, vid_mem.shape[1], 1)  # Shape: (8, 15, 256)
-        
-        samples = []
 
-        for i in range(vid_mem.shape[0]):  # Iterate over the batch dimension (size 8)
-            # Create dummy step_ids corresponding to the number of frames in the video sequence
-            step_ids = torch.arange(src_txt.shape[1])  # step_ids will be [0, 1, ..., 14] for each video
-            sample = {
-                'step_features': txt_mem[i],       # Video sequence of shape [15, 256]
-                'frame_features': vid_mem[i],      # Text sequence of shape [10, 256]
-                'step_ids': step_ids               # Dummy step IDs corresponding to video frames
-            }
-            samples.append(sample)
+        # Query-condition vid_mem using decoder output (hs[-1]: bsz, num_queries=1, d)
+        # Broadcasts across L_vid so span/class heads are query-aware
+        vid_mem_q = vid_mem + hs[-1]  # (bsz, L_vid, d)
 
-        _, A_post = compute_alignment_loss(
-        samples=samples, 
-        distractors=None,        # No distractors in this case
-        l2_normalize=True,       # Normalize features if needed
-        # drop_cost_type='max',    # Choose how to compute cost between sequences
-        dp_algo='DTW',       # Use DropDTW for flexible alignment
-        keep_percentile=1,       # Keep all frames for matching
-        contiguous=True,         # Ensure contiguous segments for alignment
-        gamma_xz=10,             # Scaling factor for matching
-        gamma_min=1,             # Scaling factor for dynamic programming alignment
-        aggregate_loss=True,      # Aggregate the loss over sequences
-        drop_cost_type='logit'
-        )
-
-
-
-        # Concatenate along the last dimension
-        vid_memory_proj_concat = torch.cat([vid_mem, hs_last_layer_repeated], dim=-1) 
-
-        outputs_class = self.class_embed_c(vid_mem).sigmoid()  # (#layers, batch_size, #queries, #classes)
-        # print(f"outputs_class: {outputs_class.shape}")
-        outputs_coord = self.span_embed_c(vid_mem)  # (#layers, bsz, #queries, 2 or max_v_l * 2)
+        outputs_class = self.class_embed_c(vid_mem_q).sigmoid()
+        outputs_coord = self.span_embed_c(vid_mem_q)
 
 
         out = {'pred_logits': outputs_class, 'pred_spans': outputs_coord,

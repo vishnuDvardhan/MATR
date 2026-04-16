@@ -65,11 +65,17 @@ class Transformer(nn.Module):
         tgt = torch.zeros_like(query_embed)
         memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)  # (L, batch_size, d)
 
-        vid_mem = memory.transpose(0, 1)[:, :src_vid.shape[1], :].transpose(1,0)  # (bsz, L_vid, d)
-        query_mem = memory.transpose(0, 1)[:, src_vid.shape[1]:, :].transpose(1,0)  # (bsz, L_txt, d)
-  
+        vid_mem = memory.transpose(0, 1)[:, :src_vid.shape[1], :].transpose(0, 1)  # (L_vid, bsz, d)
+        query_mem = memory.transpose(0, 1)[:, src_vid.shape[1]:, :].transpose(0, 1)  # (L_txt, bsz, d)
 
-        aligned_tensor = vid_mem  # (L_vid, bsz, d)
+        # Soft query-guided alignment: each video frame attends to query steps.
+        # Frames similar to the query get enriched; irrelevant frames are suppressed.
+        d = vid_mem.shape[-1]
+        attn_scores = torch.einsum('lbd,kbd->lkb', vid_mem, query_mem) / (d ** 0.5)  # (L_vid, L_txt, bsz)
+        attn_weights = F.softmax(attn_scores, dim=1)  # normalise over query steps
+        query_context = torch.einsum('lkb,kbd->lbd', attn_weights, query_mem)  # (L_vid, bsz, d)
+        aligned_tensor = vid_mem + query_context  # residual: video + attended query context
+
         l = vid_mem.shape[0]
 
         hs = self.decoder(tgt, aligned_tensor, memory_key_padding_mask=mask[:,:l],
