@@ -8,15 +8,15 @@ clip_length=2
 gpu_id=0
 num_workers=8
 
-exp_id="sportsmoment-clip-5"
+exp_id="sportsmoment-clip-6"
 model_id=MATR
 
-bsz=400
+bsz=100
 eval_bsz=4
-n_epoch=100
-lr=5e-5
-lr_drop=70
-lr_warmup=20
+n_epoch=50
+lr=1e-5
+lr_drop=40
+lr_warmup=5
 wd=1e-4
 
 input_dropout=0.5
@@ -80,7 +80,7 @@ fi
 
 # Run Training
 cd /home/user/Desktop/MATR
-CUDA_VISIBLE_DEVICES=1 PYTHONPATH=/home/user/Desktop/MATR \
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=/home/user/Desktop/MATR \
   /home/user/miniconda3/envs/matr_imagebind/bin/python ./main/train.py \
 --dset_type ${dset_type} \
 --dset_name ${dset_name} \
@@ -125,6 +125,4 @@ CUDA_VISIBLE_DEVICES=1 PYTHONPATH=/home/user/Desktop/MATR \
 --eval_mode ${eval_mode} \
 --round_multiple ${round_multiple} \
 --hidden_dim ${hidden_dim} \
---grad_clip 0.1 \
---eval_init ${@:1} \
---resume results/mr-sportsmr/sportsmoment-clip-4-clip-clip-2026_04_06_08/model_best.ckpt
+--grad_clip 0.1

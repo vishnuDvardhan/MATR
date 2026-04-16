@@ -9,15 +9,15 @@ clip_length=2
 gpu_id=0
 num_workers=16
 
-exp_id="sportsmoment-imagebind-8"
+exp_id="sportsmoment-imagebind-9"
 model_id=MATR
 
-bsz=400
+bsz=100
 eval_bsz=4
-n_epoch=100
-lr=5e-5
-lr_drop=70
-lr_warmup=20
+n_epoch=50
+lr=1e-5
+lr_drop=40
+lr_warmup=5
 wd=1e-4
 
 input_dropout=0.5
@@ -49,8 +49,7 @@ t_feat_type=imagebind
 use_cache=-1
 easy_negative_only=-1
 
-resume="results/mr-sportsmr/sportsmoment-imagebind-4-imagebind-imagebind-2026_04_06_17/model_best.ckpt"
-# model_best.ckpt = epoch 5, mAP 31.61, mIoU 51.76
+# resume=""
 
 
 # Data Paths
@@ -142,6 +141,4 @@ CUDA_VISIBLE_DEVICES=0 PYTHONPATH=/home/user/Desktop/MATR \
 --eval_mode ${eval_mode} \
 --round_multiple ${round_multiple} \
 --hidden_dim ${hidden_dim} \
---grad_clip 0.1 \
---resume ${resume} \
---resume_all
+--grad_clip 0.1
