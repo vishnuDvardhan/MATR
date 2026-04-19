@@ -8,7 +8,7 @@ clip_length=2
 gpu_id=0
 num_workers=8
 
-exp_id="sportsmoment-clip-6"
+exp_id="sportsmoment-clip-7"
 model_id=MATR
 
 bsz=100
@@ -125,4 +125,5 @@ CUDA_VISIBLE_DEVICES=0 PYTHONPATH=/home/user/Desktop/MATR \
 --eval_mode ${eval_mode} \
 --round_multiple ${round_multiple} \
 --hidden_dim ${hidden_dim} \
+--resume results/mr-sportsmr/sportsmoment-clip-4-clip-clip-2026_04_06_08/model_best.ckpt \
 --grad_clip 0.1
